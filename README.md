@@ -1,4 +1,4 @@
-# jamesriver-summarystatistics
+# Long-term Water Temperature in the James River
 
 ![](waterTemps_benchmarkLines.gif)
 
