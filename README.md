@@ -1,5 +1,7 @@
 # jamesriver-summarystatistics
 
+[](waterTemps_benchmarkLines.gif)
+
 A project to to combine 15 years of water quality monitoring data and generate daily mean summary statistics for select variab
 
 * Temperature (`TempC`)
