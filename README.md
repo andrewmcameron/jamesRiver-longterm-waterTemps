@@ -1,6 +1,6 @@
 # jamesriver-summarystatistics
 
-A project to to combine 15 years of water quality monitoring data and generate daily mean summary statistics for select variables,
+A project to to combine 15 years of water quality monitoring data and generate daily mean summary statistics for select variab
 
 * Temperature (`TempC`)
 * pH (`pH`)
@@ -14,8 +14,22 @@ as well as produce an animated plot depicting seasonal patterns and inter-annual
 
 ## Files
 
-- `data_wrangling.Rmd`: This R Markdown file contains the code for combining 15 years of long-term water monitoring data.
-- `ggplot_gif_generator.Rmd`: This R Markdown file includes the script to generate a complex ggplot object and export it as a GIF.
+This repository contains the following components:
+
+| File/Folder Name                 | Description                                                               |
+|----------------------------------|---------------------------------------------------------------------------|
+| `annual summaries/`              | Contains yearly summary reports as separate .xlsx files.                                          |
+| `annual summaries folder/`       | Directory for storing annual summary reports.                             |
+| `data/`                          | Folder with raw and processed data files.                                 |
+| `what a commitment`              | Likely a note or comment about the dedication required for the project.   |
+| `.gitignore`                     | Specifies intentionally untracked files to ignore.                        |
+| `Initial commit`                 | The first commit to the repository, setting up the project structure.     |
+| `README.md`                      | File containing the project overview and instructions.                    |
+| `Update README.md`               | A commit message indicating an update to the README file.                 |
+| `RicePier_dailymeans_2009to23.Rmd`| R Markdown document calculating daily mean values from 2009 to 2023.     |
+| `animated_timeSeries.rmd`        | R Markdown document for creating animated time series visualizations.     |
+| `jamesRiver-longterm-waterTemps.Rproj`| R Project file for long-term water temperature analysis in James River. |
+| `waterTemps_benchmarkLines.gif`  | Animated GIF showing water temperature trends with benchmark lines.        |
 
 ## Requirements
 
