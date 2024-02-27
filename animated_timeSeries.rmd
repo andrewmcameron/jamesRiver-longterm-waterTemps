@@ -1,0 +1,179 @@
+---
+title: "Visualizing Temporal Shifts in James River Annual Water Temperature Cycle"
+author: "Andrew Cameron"
+date: "2024-01-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(gganimate)
+library(gifski)
+
+```
+
+```{r `read in data`}
+# path to temperature data Excel file
+excel_file <- "RicePier_09to23_sumStats.csv"
+summary_stats <- readr::read_csv(excel_file)
+
+```
+
+
+```{r `prep plot data`}
+
+plot_df <- summary_stats %>%
+  mutate(year = substr(Date_ymd, 1,4),
+         DOY = yday(as.Date(Date_ymd))) %>%
+  select(mean_temp, DOY, year)
+
+# derive long term daily average temps
+longterm_mean <- plot_df %>%
+  group_by(DOY) %>%
+  summarise(Q1_longterm = quantile(mean_temp, 0.25, na.rm = TRUE),
+            Q3_longterm = quantile(mean_temp, 0.75, na.rm = TRUE),
+            mean_temp = mean(mean_temp, na.rm = TRUE))
+
+# Add daily means to long term summary data amd assign them the year 'long term daily mean"
+plot_df <- rbind(plot_df, longterm_mean %>%
+                   select(mean_temp, DOY) %>%
+                   mutate(year = "long-term daily \nmean")
+                 )
+
+# plotting data should be interpolated to remove NaN
+plot_df$mean_temp <- zoo::na.approx(plot_df$mean_temp, na.rm = FALSE) # interpolation with this function still produces 1 NA
+longterm_mean$mean_temp <- zoo::na.approx(longterm_mean$mean_temp, na.rm=FALSE)
+```
+
+```{r `color mapping,fonts,labels`}
+library(showtext)
+# set factor levels for `year` field. 
+my_levs <- c("long-term daily \nmean", as.character(2009:2023))
+plot_df$year <- factor(plot_df$year, levels = my_levs)
+
+color_vec <- rep(c("#896978", "#058ED9", "maroon4", "#629460", "#D17B0F", "salmon2"), 3)
+
+
+color_vec2 <- c("black", rep("#058ED9" ,15))
+
+color_mapping <- setNames(color_vec, levels(plot_df$year))
+
+# bring in custom fonts with `showtext`. Refer to fonts.google.com for full library
+font_add_google(name = "Alegreya Sans", family = "custom_font")
+font_add_google(name = "Lilita One", family = "custom_font2")
+showtext_auto()
+
+# set x axis labels
+custom_labels <- format(as.Date(seq(0, 365, by = 30.5), origin = "2023-01-02"), "%b")
+
+```
+
+```{r `secondary animation data`}
+benchmark.df <- read_csv("benchmarkDOY_20C.csv") 
+
+benchmark.df$year[16] <- "long-term daily \nmean"
+benchmark.df$year <- factor(benchmark.df$year, levels = my_levs)
+
+
+# create data frame for line segments to accompany benchmark labls
+lineSeg.df <- data.frame(year = c("long-term daily \nmean", as.character(2009:2023)),
+                         x1 = benchmark.df$spring_first,
+                         x2 = benchmark.df$fall_first,
+                         y = 2)
+
+```
+
+### first animation - annual water temp time series
+```{r `plot and animate`, warning = FALSE}
+library(gganimate)
+#library(av)  
+# use `av` to output .mp4 
+##   `renderer = av_renderer('output.mp4')`
+
+# plot
+animatedPlot <- ggplot() +
+  geom_ribbon(data = longterm_mean, 
+              aes(x = DOY, ymin = Q1_longterm, ymax = Q3_longterm, fill = "IQR"), 
+              show.legend = TRUE, 
+              alpha = 0.2) +
+  geom_line(data = longterm_mean, 
+            aes(x = DOY, y = mean_temp, 
+                linetype = "Long-term daily \nmean w/ IQR"), 
+            color = "black", na.rm = TRUE, show.legend = TRUE) +
+  geom_line(data = plot_df, 
+            aes(x = DOY, y = mean_temp, color = year),
+            linewidth = .95, na.rm = TRUE,
+            show.legend = FALSE) +
+  geom_text(data = plot_df, aes(label = year, x = 30, y = 30),
+            size = 8, 
+            color = "grey45",
+            family = "custom_font2",
+            show.legend = FALSE, 
+            check_overlap = TRUE) +
+
+  transition_states(year, wrap = FALSE) +
+  enter_fade() +
+  exit_fade() +
+  ease_aes("cubic-in-out") +
+  
+ geom_vline(data = benchmark.df, 
+             aes(xintercept = spring_first,
+                 color = "Spring Benchmark"),
+             alpha = .50, show.legend = FALSE) +
+  geom_vline(data = benchmark.df, 
+             aes(xintercept = fall_first, 
+                 color = "Fall Benchmark"),
+             alpha = .50, show.legend = FALSE) +
+  
+  scale_color_manual(values = color_mapping, guide = FALSE) + 
+  scale_linetype_manual(values = "dashed", name = NULL) +
+  scale_linewidth_manual(values = .5, name = NULL) +
+  scale_fill_manual(values = "#C0B7AF", name = NULL, guide = FALSE) +
+  scale_x_continuous(breaks = seq(0, 365, by = 30.5), labels = custom_labels) +
+  
+  theme_classic() +
+  theme(legend.justification = c(1,.5), 
+        legend.box = "vertical",  # Set the legend box to be horizontal
+        legend.text = element_text(size = 20, family = "custom_font"),
+        legend.key.size = unit(1, "cm"),
+        legend.spacing = unit(1, "cm"),
+        plot.title = element_text(size = 22, family = "custom_font2", margin = margin(b = 30)),
+        axis.text.x = element_text(size = 22, family = "custom_font", hjust = 0, color = "grey30"),
+        axis.text.y = element_text(size = 22, family = "custom_font", color = "grey30"),
+        axis.title.x = element_text(color = "grey17", size = 23.5, family = "custom_font", margin = margin(t = 50)),
+        axis.title.y = element_text(color = "grey17", size = 23.5, family = "custom_font", margin = margin(r = 50)),
+        axis.line = element_blank(),
+        panel.spacing.x = margin(t = 30),
+        panel.background = element_rect(fill = "#FAF9F6"),
+        panel.border = element_rect(color = "grey20", fill = NA, size = .5),
+        plot.margin = margin(t = 30, r = 125, b = 30, l = 30)) +
+  
+  labs(title = NULL,
+       y = "Water temperature (°C)",
+       x = "Date") +
+  
+  geom_text(aes(x = 195, y = 6, label = "20°C seasonal benchmarks"), size = 6, family = "custom_font", color = "grey45") +
+  geom_text(aes(x = 195, y = 4., label = "first of spring"), size = 6, family = "custom_font", color = "grey45") +
+  geom_text(aes(x = 195, y = 2, label = "first of fall"), size = 6, family = "custom_font", color = "grey45") +
+  geom_segment(aes(x = 170, xend = 140, y = 4, yend = 4), 
+               arrow = arrow(length = unit(0.3, "cm")), color = "grey45") +
+  geom_segment(aes(x = 215, xend = 245, y = 2, yend = 2), 
+               arrow = arrow(length = unit(0.3, "cm")), color = "grey45")  
+
+
+
+
+# aniamte
+animate(animatedPlot, nframes = 500, renderer = gifski_renderer(),
+               width = 1200, start_pause = 30, end_pause = 20,
+        height = 600)
+
+
+
+
+# save as
+anim_save("waterTemps_benchmarkLines.gif")
+
+```

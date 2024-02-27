@@ -1,0 +1,369 @@
+---
+title: "2009-2023 Rice River Pier Summary Statistics"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Recalcualte daily statistics (mean, min, max) for the variables: temperature, pH, SpCond (uScm), Turbidity, CHLa, ODOsat and ODOmg/L. 
+
+note: the original data files were manually manipulated to remove first rows that contained metadata (i.e. units). 
+
+
+## Recalculate for all years
+
+```{r `define path and files`}
+library(tidyverse)
+
+files <- list.files("annual summaries/")
+path_to_files <- paste0(getwd(), "/annual summaries/")
+
+# 2009, 2011, and 2012 files are .xls but need to be saved as .xlsx for this workflow.
+xlsx_files <- files[grepl(".xlsx$", files)]
+
+```
+
+```{r `get xlsx tab names`}
+tab_names <- list()
+
+for (i in seq_along(xlsx_files)) {
+  names <- openxlsx::getSheetNames(paste0(path_to_files, xlsx_files[i]))
+  tab_names[[i]] <- names
+}
+
+head(tab_names)
+
+# create list of tabs that contain data in each year's xlsx workbook
+tabs_to_keep <- list("2009" = c(1), 
+                     "2010" = c(2), 
+                     "2011" = c(2:3), 
+                     "2012" = c(2:9),
+                     "2013" = c(2:16),
+                     "2014" = c(3),
+                     "2015" = c(1:11),
+                     "2016" = c(3:14),
+                     "2017" = c(4:15),
+                     "2018" = c(3:14),
+                     "2019" = c(3:14),
+                     "2020" = c(3:14),
+                     "2021" = c(3:8),
+                     "2022" = c(3:11),
+                     "2023" = c(3:14)
+)
+
+```
+
+for some reason R was rendering some date fields as year only, rather than representing the excel serial number. Resolved by *manually converting 'date' fields to text* in the source xlsx files for years that were only returning a year (2009, 2011, 2012)
+
+```{r}
+## Use nested list structure to store data by year and by month/tab
+
+###  - outer list, contains 14 lists (one list per year)
+###       |__ inner lists, contain 1 or more dfs (one df per tab/month)
+###               |__ dfs containing obs in 15 min intervals 
+       
+
+# outer list 
+data_byYear <- list()
+
+for (i in seq_along(xlsx_files)) {
+  yearOfData <- xlsx_files[i]
+  
+  #  inner list
+  data_byTab <- list()
+  
+    # ...to hold some number of dataframes, one for each tab in that year's workbook
+    for (j in seq(length(tabs_to_keep[[i]]))) {
+      sheet.df <- openxlsx::read.xlsx(paste0(path_to_files, yearOfData), sheet = tabs_to_keep[[i]][j])
+      
+      # Was having lots of issues with fields in certain tabs being read in as character even after manually setting data type in Excel. This is to ensure that fields are numeric. This loop passes every column to `as.numeric` if that column has at least one value that does not return NA when coerced (ie, has  numeric characters)
+      for (k in seq_along(names(sheet.df))) {
+        if (any(!is.na(as.numeric(sheet.df[, k])))) {
+          sheet.df[, k] <- as.numeric(sheet.df[,k])}}
+      
+      data_byTab[[j]] <- sheet.df
+    
+    }
+    data_byYear[[i]] <- data_byTab
+}
+
+# Name inner lists to reflect year
+names(data_byYear) <- names(tabs_to_keep)
+```
+
+```{r `data way point`}
+# create separate variable to avoid having to rerun the for loop in the previous chunk more than is absolutely necessary 
+
+ # data_byYear_wayPoint <- data_byYear
+
+ # data_byYear <- data_byYear_wayPoint
+```
+
+```{r `standardize col names`}
+# Standarize relevant column names and remove unnecessary columns
+# variables of interest
+  ### temperature C
+  ### pH
+  ### SpCond_uScm (values in 100s) 
+  ### Turbidity
+  ### CHLa
+  ### ODOsat 
+  ### and ODOmg/L
+
+
+# vectors containing possible variable column names
+dttm_cols <- c(
+  "TIMESTAMP", "Timestamp", "Date.&.Time", "DateTime", "dbo_RivPierRealtime.DateTime", "dbo_RivPierRealtime_2015.DateTime", "dbo_RivPierRealtime_Active.DateTime"
+  )
+temp_cols <- c("Temp", "Sonde_TempC", "Sonde1_tempC", "Sonde1_TempC")
+chla_cols <- c("Sonde1_Chl_ugl", "Sonde1_Chl_ugL", "Chlorophyll", "Sonde_Chl_ugL", "CHLa", "Sonde1_Chla", "Sonde1_chla_ugl")
+ph_cols <- c("pH", "ph", "Sonde_pH", "Sonde1_pH")
+uScm_cols <- c("Sonde1_SpCond_uScm")
+mScm_cols <- c("SpCond", "Sonde_SpCond_mScm", "Cond", "Sonde1_SpCond_mScm")
+turb_cols <- c("Turbidity", "Turb", "Sonde1_turb_ntu", "Sonde1_turb_NTU", "Sonde1_Turb_NTU")
+odosat_cols <- c("ODOsat", "Sonde_ODOsat", "Dosat", "Sonde1_ODOsat")
+odomgl_cols <- c("ODO","Sonde_ODO_mgL", "Domg/L", "Sonde1_ODOmgl","Sonde1_ODO_mgL")
+# Use above vectors to set the same col names for each variable in each dataframe
+
+# Function for setting column names
+standardize_column_names <- function(df) {
+  for (col in colnames(df)) {
+    if (col %in% temp_cols) {
+      colnames(df)[colnames(df) %in% temp_cols] <- "Sonde1_TempC"
+    } else if (col %in% chla_cols) {
+      colnames(df)[colnames(df) %in% chla_cols] <- "Sonde1_Chla"
+    } else if (col %in% ph_cols) {
+      colnames(df)[colnames(df) %in% ph_cols] <- "Sonde1_pH"
+    } else if (col %in% uScm_cols) {
+      colnames(df)[colnames(df) %in% uScm_cols] <- "Sonde1_SpCond_uScm"
+    } else if (col %in% mScm_cols) {
+      colnames(df)[colnames(df) %in% mScm_cols] <- "Sonde1_SpCond_mScm"
+    } else if (col %in% turb_cols) {
+      colnames(df)[colnames(df) %in% turb_cols] <- "Sonde1_turb_NTU"
+    } else if (col %in% odosat_cols) {
+      colnames(df)[colnames(df) %in% odosat_cols] <- "Sonde1_ODOsat"
+    } else if (col %in% odomgl_cols) {
+      colnames(df)[colnames(df) %in% odomgl_cols] <- "Sonde1_ODOmgl"
+    } else if (col %in% dttm_cols) {
+      colnames(df)[colnames(df) %in% dttm_cols] <- "Date_ymd"
+    }
+  }
+  return(df)
+}
+
+
+# Use function to set variable names
+data_byYear <- lapply(data_byYear, function(df_list) {
+  lapply(df_list, standardize_column_names)
+})
+
+```
+
+```{r}
+# remove the extraneous pH col in 2009 data (values in the upper 30s)
+data_byYear[['2009']][[1]] <- data_byYear[['2009']][[1]][-8]
+
+```
+
+```{r}
+# 2010 missing turbidty field. Add field with NA to allow for eventual row binding.
+data_byYear[['2010']][[1]]['Sonde1_turb_NTU'] <- NA
+
+```
+
+```{r}
+# 2009-2014 do not have a Sonde1_SpCond_uScm field. 
+for (year in as.character(2009:2014)) {
+  for (tab in seq_along(data_byYear[[year]])) {
+    data_byYear[[year]][[tab]]['Sonde1_SpCond_uScm'] <- NA
+  }
+}
+
+```
+
+```{r}
+# 2015 tab 5 has no SpCond field with mScm as unit. Add one and popualte NA
+data_byYear[['2015']][[5]]['Sonde1_SpCond_mScm'] <- NA
+
+```
+
+
+```{r `helper functions`, eval = FALSE}
+
+# returns column names in original xlsx files containing some string
+ lapply(data_byYear, function(x) {
+  lapply(x, function(sheet.df) {
+    # Check if the column names contain some string
+    poss_col_names <- names(sheet.df)[grepl("temp", names(sheet.df), ignore.case = TRUE)]
+    return(poss_col_names)
+  })
+})
+
+
+## returns index of  dataframes that do NOT have a column containing a given character string or regex
+which(!unlist(lapply(data_byYear, function(year){
+  lapply(year, function(tab) {
+any(grepl("Sonde1_TempC", colnames(as.data.frame(tab))))
+  })
+})
+))
+
+## quick look at col names in a specific tab
+colnames(data_byYear[['2009']][[1]])
+## quick look at a vector
+data_byYear[['2016']][[11]]
+data_byYear[['2017']][[1]][,"Sonde1_ODOmgl"]
+head(data_byYear[['2022']][[6]][, ]
+
+
+## Where does a variable name occur twice in the same tab
+which(unlist(lapply(data_byYear, function(year) {
+  lapply(year, function(tab) {
+    
+    my_names <- colnames(as.data.frame(tab))
+    
+    variable <- "Sonde1_SpCond_uScm"
+        
+    counts <- table(my_names)
+    
+    counts[variable] > 1
+
+  })
+})))
+
+
+## see all colnames for all tabs 
+lapply(data_byYear, function(list) {
+  lapply(list, function(df) {
+    colnames(df)
+  })
+})
+
+```
+
+```{r `select desired variables`}
+
+# select for only needed variables
+data_byYear <- lapply(data_byYear, function(year) {
+  lapply(year, function(tab) {
+    tab <- as.data.frame(tab) %>%
+      select(Sonde1_TempC,
+             Sonde1_Chla,
+             Sonde1_pH, 
+             Sonde1_SpCond_mScm, 
+             Sonde1_SpCond_uScm, 
+             Sonde1_turb_NTU, 
+             Sonde1_ODOsat, 
+             Sonde1_ODOmgl, 
+             Date_ymd)
+  })
+})
+
+
+```
+
+```{r `create single dataframe`}
+# Bind into single df  --- `do.call` expects identical schema. dplyr has more flexible `bind_rows()`
+bound_tabs <- list()
+
+bound_tabs <- lapply(
+  data_byYear, function(list) {
+    bound_tabs[names(list)] <- bind_rows(list)
+})
+
+allYears.df <- bind_rows(bound_tabs)
+
+  # remove rows with NA across the all cols (unsure why there are 8 of these)
+  length(which(is.na(allYears.df$Date_ymd)))
+  allYears.df %>%
+    filter(!is.na(Date_ymd))
+  
+
+head(allYears.df )
+```
+
+```{r}
+# Convert Excel-formatted dates to legible date object and store in column with standardized field name
+## function to go from serial date to a character string formatted "YYYY-MM-DD"
+convertExcelTime <- function(x) {
+  x <- x * 86400
+  x <- as.POSIXct(x, origin = "1899-12-30", tz = "UTC")
+  x$Date_ymd <- format(x, "%Y-%m-%d")
+}   ## <-- this function results in a warning message: 
+    ###           Warning message:
+    ###           In x$Date_ymd <- format(x, "%Y-%m-%d") : Coercing LHS to a list
+
+
+allYears.df$Date_ymd <- suppressWarnings(convertExcelTime(allYears.df$Date_ymd))
+
+```
+
+```{r `covert mS to uS`}
+# 2009-2014 only have SpCond obs in mScm. Convert to uScm 
+allYears.df[!is.na(allYears.df$Date_ymd) & 
+              as.numeric(substr(allYears.df$Date_ymd, 1, 4)) < 2015, 
+            "Sonde1_SpCond_uScm"] <- allYears.df %>%
+  mutate(uScm_conversion = Sonde1_SpCond_mScm * 1000) %>%
+  filter(as.numeric(substr(Date_ymd, 1, 4)) < 2015) %>%
+  mutate(Sonde1_SpCond_uScm = uScm_conversion) %>%
+  select(Sonde1_SpCond_uScm)
+
+```
+
+```{r 'missing values to NA`}
+# Values that are -9999 will be treated as observed values. Convert to NA
+allYears.df <- allYears.df %>%
+  mutate_all(~ ifelse(. == -9999, NA, .))
+
+# missing values recorded as 0 between 7/22 and 8/3/20 need to be converted to NA
+allYears.df[allYears.df$Date_ymd >= as.Date("2020-07-22") & 
+              allYears.df$Date_ymd <= as.Date("2020-08-03") & 
+              allYears.df$Sonde1_TempC == 0  & 
+              !is.na(allYears.df$Date_ymd) , 
+            c("Sonde1_TempC", "Sonde1_turb_NTU", "Sonde1_SpCond_mScm", "Sonde1_SpCond_uScm")] <- NA
+
+```
+
+
+
+```{r}
+# generate summary statistics with mean, min, max values for each day of observations
+summary_stats <- allYears.df %>%
+  group_by(Date_ymd) %>%
+  summarise(
+      mean_temp = mean(Sonde1_TempC, na.rm = TRUE),
+      max_temp = max(Sonde1_TempC, na.rm = TRUE),
+      min_temp = min(Sonde1_TempC, na.rm = TRUE),
+      mean_pH = mean(Sonde1_pH, na.rm = TRUE),
+      max_pH = max(Sonde1_pH, na.rm = TRUE),
+      min_pH = min(Sonde1_pH, na.rm = TRUE),
+      mean_SpCond = mean(Sonde1_SpCond_uScm, na.rm = TRUE),
+      max_SpCond = max(Sonde1_SpCond_uScm, na.rm = TRUE),
+      min_SpCond = min(Sonde1_SpCond_uScm, na.rm = TRUE),
+      mean_Turbidity = mean(Sonde1_turb_NTU, na.rm = TRUE),
+      max_Turbidity = max(Sonde1_turb_NTU, na.rm = TRUE),
+      min_Turbidity = min(Sonde1_turb_NTU, na.rm = TRUE),
+      mean_CHLa = mean(Sonde1_Chla, na.rm = TRUE),
+      max_CHLa = max(Sonde1_Chla, na.rm = TRUE),
+      min_CHLa = min(Sonde1_Chla, na.rm = TRUE),
+      mean_ODOsat = mean(Sonde1_ODOsat, na.rm = TRUE),
+      max_ODOsat = max(Sonde1_ODOsat, na.rm = TRUE),
+      min_ODOsat = min(Sonde1_ODOsat, na.rm = TRUE),
+      mean_ODOmgL = mean(Sonde1_ODOmgl, na.rm = TRUE),
+      max_ODOmgL = max(Sonde1_ODOmgl, na.rm = TRUE),
+      min_ODOmgL = min(Sonde1_ODOmgl, na.rm = TRUE)
+  )
+
+summary(allYears.df)
+
+write_csv(summary_stats, "RicePier_09to23_sumStats.csv", append=FALSE)
+write_csv(allYears.df, "Rice_09to23_rawObs.csv", append=FALSE)
+x <- as.data.frame(summary(allYears.df))
+# write_csv(x, "data_summary.csv", append=FALSE)
+
+```
+
